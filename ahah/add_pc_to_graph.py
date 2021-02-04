@@ -3,7 +3,7 @@ import time
 import cudf
 from cuml.neighbors import NearestNeighbors
 
-from ahah.data_utils import Config, clean_postcodes
+from ahah.utils import Config, clean_postcodes
 
 
 postcodes: cudf.DataFrame = clean_postcodes(path=Config.RAW_DATA / "postcodes")

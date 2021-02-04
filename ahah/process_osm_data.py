@@ -1,6 +1,6 @@
 from rich.progress import track
 
-from ahah.data_utils import Config
+from ahah.utils import Config
 import geopandas as gpd
 
 if __name__ == '__main__':

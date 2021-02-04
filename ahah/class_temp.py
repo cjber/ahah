@@ -9,7 +9,7 @@ import pandas as pd
 from rich.progress import track
 from shapely.geometry import LineString
 
-from ahah.data_utils import Config, clean_retail_centres
+from ahah.utils import Config, clean_retail_centres
 
 
 class PostCodeDistances:

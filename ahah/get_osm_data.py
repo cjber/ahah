@@ -2,7 +2,7 @@ from pyrosm import OSM, get_data
 from pyrosm.data import sources
 from rich.progress import track
 
-from ahah.data_utils import Config
+from ahah.utils import Config
 
 
 def get_county(county: str, network_type='driving') -> None:

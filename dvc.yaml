@@ -1,0 +1,14 @@
+stages:
+    get_osm_data:
+        cmd: python -m ahah.get_osm_data
+        outs:
+            - data/raw/osm_pbf
+            - data/processed/osm/nodes.csv
+            - data/processed/osm/edges.csv
+    add_postcodes_to_graph:
+        cmd: python -m ahah.add_pc_to_graph
+        deps:
+            - data/raw/postcodes
+            - data/processed/osm/nodes.csv
+        outs:
+            - data/processed/postcodes.csv

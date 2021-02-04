@@ -1,0 +1,10 @@
+data/raw
+data/processed
+temp
+
+__pycache__
+
+.venv
+.vim
+.empty
+.typings

@@ -1,6 +1,8 @@
-import cudf
 from typing import Union
+
+import cudf
 import cugraph
+from cuml.neighbors import NearestNeighbors
 import cuspatial
 import dask_cudf
 import geopandas as gpd
@@ -17,34 +19,15 @@ class PostCodeDistances:
             self,
             road_graph: cudf.DataFrame,
             road_nodes: cudf.DataFrame,
-            poi: pd.Series,
             postcode_ids: np.ndarray,
             buffer=None
     ):
-        if buffer:
-            max_easting = int(poi['easting']+buffer)
-            min_easting = int(poi['easting']-buffer)
-            max_northing = int(poi['northing']+buffer)
-            min_northing = int(poi['northing']-buffer)
-
-            self.road_nodes = road_nodes[
-                (road_nodes['easting'] < max_easting) &
-                (road_nodes['easting'] > min_easting) &
-                (road_nodes['northing'] < max_northing) &
-                (road_nodes['northing'] > min_northing)
-            ]
-            self.road_graph = road_graph[
-                road_graph['node_start'].isin(self.road_nodes['nodeID']) &
-                road_graph['node_end'].isin(self.road_nodes['nodeID'])
-            ]
-        else:
-            self.road_nodes = road_nodes
-            self.road_graph = road_graph
+        self.road_nodes = road_nodes
+        self.road_graph = road_graph
 
         self.postcodes = self.road_nodes[
             self.road_nodes['id'].isin(postcode_ids)
         ]
-        self.poi = poi
 
         self.graph = cugraph.Graph()
         self.graph.from_cudf_edgelist(
@@ -54,44 +37,23 @@ class PostCodeDistances:
             edge_attr='length'
         )
 
-    def haversine_single_point(
-            self,
-            multiple: cudf.DataFrame,
-            point: pd.Series,
-            k: int
-    ) -> Union[cudf.DataFrame, None]:
-        multiple['easting_REF'] = int(point['easting'])
-        multiple['northing_REF'] = int(point['northing'])
-        multiple['distance'] = cuspatial.haversine_distance(
-            multiple['easting'],
-            multiple['northing'],
-            multiple['easting_REF'],
-            multiple['northing_REF']
+    def fit(self, poi):
+        breakpoint()
+        node_nbrs = NearestNeighbors(n_neighbors=1).fit(
+            self.road_nodes[['easting', 'northing']]
         )
-        multiple.drop(
-            ['easting_REF', 'northing_REF'], axis=1, inplace=True
+        _, poi_node = node_nbrs.kneighbors(
+            np.array(poi).reshape(1, -1)
         )
-        nearest = multiple.nsmallest(k, 'distance')
-        multiple.drop(['distance'], axis=1, inplace=True)
-        return nearest
-
-    def fit(self):
-        poi_node = self.haversine_single_point(
-            multiple=self.road_nodes,
-            point=self.poi,
-            k=1
+        pc_nbrs = NearestNeighbors(n_neighbors=10).fit(
+            self.postcodes[['easting', 'northing']]
         )
-        nearest_postcodes = self.haversine_single_point(
-            multiple=self.postcodes,
-            point=self.poi,
-            k=10
+        _, pcs = pc_nbrs.kneighbors(
+            np.array(poi).reshape(1, -1)
         )
-        pc_nodes = nearest_postcodes['id'].to_pandas().tolist()
 
         poi_node_dists = []
         routes = []
-
-        breakpoint()
         pc_bfs = cugraph.bfs(
             self.graph,
             start=int(poi_node['id'].values),
@@ -109,13 +71,18 @@ class PostCodeDistances:
         return poi_node_dists, routes
 
 
-road_graph = dask_cudf.read_csv(
-    Config.OSM_GRAPH / 'edges.csv',
-    header=None,
-    names=Config.EDGE_COLS,
-    dtype={'u': 'int32', 'v': 'int32', 'length': 'float32'}
-).dropna(subset=['u', 'v']).fillna(value={'length': 0}).compute()
-
+road_graph = (
+    dask_cudf.read_csv(
+        Config.OSM_GRAPH / 'edges.csv',
+        header=None,
+        names=Config.EDGE_COLS,
+        dtype={'u': 'int32', 'v': 'int32', 'length': 'float32'}
+    )
+    .dropna(subset=['u', 'v'])  # type:ignore
+    .fillna(value={'length': 0})
+    .compute()
+)
+road_graph = cudf.read_csv(Config.OSM_GRAPH / 'edges.csv')
 road_nodes = cudf.read_csv(
     Config.OSM_GRAPH / 'nodes.csv',
     header=None,
@@ -130,10 +97,9 @@ retail_point: pd.Series = retail.iloc[1]  # type:ignore
 pc_dist = PostCodeDistances(
     road_nodes=road_nodes,
     road_graph=road_graph,
-    poi=retail_point,
     postcode_ids=postcode_ids
 )
-pc_dist.fit()
+pc_dist.fit(poi=retail_point)
 
 
 # for idx, pc in track(postcodes[100_000:].to_pandas().iterrows(), total=len(postcodes)):
@@ -165,3 +131,24 @@ pc_dist.fit()
 # plt.xlim([min(roads_gpd['easting']), max(roads_gpd['easting'])])
 # plt.ylim([min(roads_gpd['northing']), max(roads_gpd['northing'])])
 # plt.show()
+
+# def haversine_single_point(
+#         self,
+#         multiple: cudf.DataFrame,
+#         point: pd.Series,
+#         k: int
+# ) -> Union[cudf.DataFrame, None]:
+#     multiple['easting_REF'] = int(point['easting'])
+#     multiple['northing_REF'] = int(point['northing'])
+#     multiple['distance'] = cuspatial.haversine_distance(
+#         multiple['easting'],
+#         multiple['northing'],
+#         multiple['easting_REF'],
+#         multiple['northing_REF']
+#     )
+#     multiple.drop(
+#         ['easting_REF', 'northing_REF'], axis=1, inplace=True
+#     )
+#     nearest = multiple.nsmallest(k, 'distance')
+#     multiple.drop(['distance'], axis=1, inplace=True)
+#     return nearest

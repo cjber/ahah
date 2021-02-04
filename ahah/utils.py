@@ -13,7 +13,7 @@ class Config:
     OSM_GRAPH = PROCESSED_DATA / "osm"
 
     NODE_COLS = ['id', 'easting', 'northing']
-    EDGE_COLS = ['u', 'v', 'length', 'maxspeed']
+    EDGE_COLS = ['u', 'v', 'length']
 
 
 def clean_postcodes(path: Path) -> cudf.DataFrame:

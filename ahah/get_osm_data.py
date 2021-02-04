@@ -35,7 +35,6 @@ def get_county(county: str, network_type='driving') -> None:
 
 
 if __name__ == '__main__':
-    (Config.RAW_DATA / 'osm_pbf').mkdir()
     # contains english counties + england, scotland and wales
     counties = sources.subregions.great_britain.available
     counties.remove('england')  # included as counties

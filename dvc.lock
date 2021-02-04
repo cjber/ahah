@@ -1,0 +1,23 @@
+get_osm_data:
+  cmd: python -m ahah.get_osm_data
+  outs:
+  - path: data/processed/osm/edges.csv
+    md5: e3dd721446520d972db14de076b0fcef
+    size: 644798934
+  - path: data/processed/osm/nodes.csv
+    md5: 3df5a14fe1c91933b7871d385c8736d9
+    size: 720914873
+add_postcodes_to_graph:
+  cmd: python -m ahah.add_pc_to_graph
+  deps:
+  - path: data/processed/osm/nodes.csv
+    md5: 3df5a14fe1c91933b7871d385c8736d9
+    size: 720914873
+  - path: data/raw/postcodes
+    md5: c6631913c4f418f5089deab8355c4de3.dir
+    size: 158967961
+    nfiles: 120
+  outs:
+  - path: data/processed/postcodes.csv
+    md5: d34a24a2879472c2526c0984b479b8b2
+    size: 52571941

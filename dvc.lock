@@ -1,23 +1,89 @@
 get_osm_data:
   cmd: python -m ahah.get_osm_data
+  deps:
+  - path: data/raw/osm_pbf
+    md5: c5116bc0106eda7606024dcfa36e1a6f.dir
+    size: 2712241487
+    nfiles: 50
   outs:
   - path: data/processed/osm/edges.csv
-    md5: e3dd721446520d972db14de076b0fcef
-    size: 644798934
+    md5: 94996700f89706bb63fe765cbed3d992
+    size: 777911439
   - path: data/processed/osm/nodes.csv
-    md5: 3df5a14fe1c91933b7871d385c8736d9
-    size: 720914873
+    md5: 82655a234c289c8658243706e49e428b
+    size: 1245596418
 add_postcodes_to_graph:
   cmd: python -m ahah.add_pc_to_graph
   deps:
   - path: data/processed/osm/nodes.csv
-    md5: 3df5a14fe1c91933b7871d385c8736d9
-    size: 720914873
+    md5: aad914a16cb92050b4ff7f4b73fe5670
+    size: 1056975990
   - path: data/raw/postcodes
     md5: c6631913c4f418f5089deab8355c4de3.dir
     size: 158967961
     nfiles: 120
   outs:
   - path: data/processed/postcodes.csv
-    md5: d34a24a2879472c2526c0984b479b8b2
-    size: 52571941
+    md5: 3b87e3a5d3bef1ee2d0bb0b9a6113b11
+    size: 52929769
+nearest_nodes:
+  cmd: python -m ahah.nearest_nodes
+  deps:
+  - path: data/processed/osm/nodes.csv
+    md5: 6d9b6238cea4bcce9eb75ed2d09ebdff
+    size: 1240626610
+  - path: data/raw/nhs-dent-stat-eng-19-20-anx3-act.csv
+    md5: a68f3ec0f6c152f5b06b3d7646a721ec
+    size: 122879281
+  - path: data/raw/postcodes
+    md5: c6631913c4f418f5089deab8355c4de3.dir
+    size: 158967961
+    nfiles: 120
+  - path: data/raw/retailcentrecentroids.gpkg
+    md5: ce98d2d9b5c5cff1d0076b396c096595
+    size: 544768
+  outs:
+  - path: data/processed/dentists.csv
+    md5: 591b5c8decef7872f7022747c0a83395
+    size: 209377
+  - path: data/processed/postcodes.csv
+    md5: f84d36fb730dd07eefbb8f95bd5d6874
+    size: 90605240
+  - path: data/processed/retail.csv
+    md5: 8f1144d7a2ef4556caa073d2b672c0be
+    size: 175387
+routing:
+  cmd: python -m ahah.routing
+  deps:
+  - path: data/processed/dentists.csv
+    md5: c6f28e06d1dbc8dddb1743592fe016d7
+    size: 120615
+  - path: data/processed/osm/edges.csv
+    md5: e3dd721446520d972db14de076b0fcef
+    size: 644798934
+  - path: data/processed/postcodes.csv
+    md5: 3724b1ce1456f2965f08f273ca030bd5
+    size: 52929769
+  - path: data/processed/retail.csv
+    md5: 731a125d88b5b376cb35f6a25f7d2480
+    size: 175026
+  outs:
+  - path: data/out/dentists_dist.csv
+    md5: 6899f5beb5017b0138793af13618030d
+    size: 29181176
+  - path: data/out/retail_dist.csv
+    md5: eee7578f19197e54ee71ce387cd6899d
+    size: 29844301
+get_buffers:
+  cmd: python -m ahah.get_buffers
+  deps:
+  - path: data/processed/postcodes.csv
+    md5: f84d36fb730dd07eefbb8f95bd5d6874
+    size: 90605240
+  - path: data/processed/retail.csv
+    md5: 8f1144d7a2ef4556caa073d2b672c0be
+    size: 175387
+  outs:
+  - path: data/processed/retail_buffers.csv
+    md5: 3f60d1d01b30bcf5f6d60855f71e43dc
+    size: 171600

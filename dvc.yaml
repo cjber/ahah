@@ -1,13 +1,29 @@
 stages:
     get_osm_data:
         cmd: python -m ahah.get_osm_data
+        deps:
+            - data/raw/osm_pbf
         outs:
             - data/processed/osm/nodes.csv
             - data/processed/osm/edges.csv
-    add_postcodes_to_graph:
-        cmd: python -m ahah.add_pc_to_graph
+    process_data:
+        cmd: python -m ahah.process_data
         deps:
-            - data/raw/postcodes
             - data/processed/osm/nodes.csv
+            - data/raw/postcodes
+            - data/raw/retailcentrecentroids.gpkg
+            - data/raw/nhs-dent-stat-eng-19-20-anx3-act.csv
         outs:
             - data/processed/postcodes.csv
+            - data/processed/retail.csv
+            - data/processed/dentists.csv
+    routing:
+        cmd: python -m ahah.routing
+        deps:
+            - data/processed/osm/edges.csv
+            - data/processed/postcodes.csv
+            - data/processed/retail.csv
+            - data/processed/dentists.csv
+        outs:
+            - data/out/retail_dist.csv
+            - data/out/dentists_dist.csv

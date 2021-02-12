@@ -1,156 +1,181 @@
+from typing import Optional, Union
+
 import cudf
 import cugraph
-from cuml.neighbors import NearestNeighbors
+import cuspatial
 import dask_cudf
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from rich.progress import track
 from shapely.geometry import LineString
+from tqdm import tqdm
 
-from ahah.utils import Config, clean_retail_centres
+from ahah.utils import Config, HiddenPrints
 
 
 class Routing:
     def __init__(
-            self,
-            road_graph: cudf.DataFrame,
-            road_nodes: cudf.DataFrame,
-            postcode_ids: np.ndarray,
-            buffer=None
+        self,
+        road_graph: cudf.DataFrame,
+        road_nodes: cudf.DataFrame,
+        postcodes: cudf.DataFrame,
+        pois: cudf.DataFrame,
     ):
-        self.road_nodes = road_nodes
+        self.postcode_ids: np.ndarray = (
+            postcodes["node_id"].drop_duplicates().to_pandas().values
+        )
+        self.pois: pd.DataFrame = pois.drop_duplicates(subset=["node_id"]).to_pandas()  # type: ignore
+
         self.road_graph = road_graph
+        self.road_nodes = road_nodes
 
-        self.postcodes = self.road_nodes[
-            self.road_nodes['id'].isin(postcode_ids)
+        self.dists = cudf.DataFrame(
+            {"id": self.postcode_ids, "distance": np.inf},
+            dtype={"id": "int32", "distance": "float"},
+        )
+        self.routes = []
+
+    def fit(self, output_routes: bool = False) -> None:
+        for _, poi in tqdm(self.pois.iterrows(), total=len(self.pois)):
+            self.get_shortest_dists(poi, output_routes=False)
+
+    def create_sub_graph(self, poi: pd.Series, buffer) -> cugraph.Graph:
+        poi_pt: pd.Series = poi[["easting", "northing"]]
+
+        node_subset = cuspatial.points_in_spatial_window(
+            min_x=poi_pt["easting"] - buffer,
+            max_x=poi_pt["easting"] + buffer,
+            min_y=poi_pt["northing"] - buffer,
+            max_y=poi_pt["northing"] + buffer,
+            xs=self.road_nodes["easting"],
+            ys=self.road_nodes["northing"],
+        )
+        node_subset = node_subset.merge(
+            self.road_nodes, left_on=["x", "y"], right_on=["easting", "northing"]
+        ).drop(["x", "y"], axis=1)
+
+        sub_edges = self.road_graph[
+            self.road_graph["v"].isin(node_subset["id"])
+            | self.road_graph["u"].isin(node_subset["id"])
         ]
-        assert len(self.postcodes.index) == len(postcode_ids)
-
-        self.create_knn_objects()
-        self.create_graph()
-
-    def create_knn_objects(self):
-        self.node_nbrs = NearestNeighbors(n_neighbors=1).fit(
-            self.road_nodes[['easting', 'northing']]
+        sub_graph = cugraph.Graph()
+        sub_graph.from_cudf_edgelist(
+            sub_edges,
+            source="u",
+            destination="v",
+            edge_attr="length",
         )
-        self.pc_nbrs = NearestNeighbors(n_neighbors=10).fit(
-            self.postcodes[['easting', 'northing']]
-        )
+        return sub_graph
 
-    def create_graph(self):
-        self.graph = cugraph.Graph()
-        self.graph.from_cudf_edgelist(
-            self.road_graph,
-            source='u',
-            destination='v',
-            edge_attr='length'
-        )
+    def get_shortest_dists(self, poi: pd.Series, output_routes: bool = False):
+        sub_graph = self.create_sub_graph(poi=poi, buffer=poi["buffer"])
+        with HiddenPrints():
+            shortest_paths: cudf.DataFrame = cugraph.filter_unreachable(
+                cugraph.sssp(sub_graph, source=poi["node_id"])
+            )  # type: ignore
 
-    def fit(self, poi):
-        breakpoint()
-        _, poi_node = self.node_nbrs.kneighbors(
-            np.array(poi).reshape(1, -1)
-        )
-        _, pcs = self.pc_nbrs.kneighbors(
-            np.array(poi).reshape(1, -1)
+        pc_dist: cudf.DataFrame = cudf.DataFrame({"vertex": self.postcode_ids}).merge(
+            shortest_paths[shortest_paths.vertex.isin(self.postcode_ids)].reset_index(
+                drop=True
+            ),
+            how="outer",
+        )  # type: ignore
+
+        self.dists["distance"] = np.where(
+            (pc_dist["distance"].to_pandas() < self.dists["distance"].to_pandas()),
+            pc_dist["distance"].to_pandas(),
+            self.dists["distance"].to_pandas(),
         )
 
-        pc_bfs = cugraph.bfs(
-            self.graph,
-            start=int(poi_node['id'].values),
-            return_predecessors=True
+        if output_routes:
+            self.process_routes(pc_dist, shortest_paths, k=5)
+
+    def process_routes(self, pc_dist, shortest_paths, k):
+        dests = pc_dist.drop_duplicates().nsmallest(k, "distance")
+        routes = []
+        for _, dest in tqdm(dests.to_pandas().iterrows()):
+            vert = int(dest["vertex"])
+            route = []
+
+            # TODO: order seems random but nodes are correct
+            while vert != -1:
+                vert = int(
+                    shortest_paths[shortest_paths["vertex"] == vert][
+                        "predecessor"
+                    ].values
+                )
+                if vert != -1:
+                    route.append(vert)
+                else:
+                    route.append(int(dest["vertex"]))
+
+            if len(route) > 1:
+                route_df: cudf.DataFrame = (
+                    cudf.DataFrame({"id": route})
+                    .merge(self.road_nodes)
+                    .to_pandas()  # type:ignore
+                )
+                route_geom = [xy for xy in zip(route_df.easting, route_df.northing)]
+                route_gpd = gpd.GeoSeries()
+                route_gpd["geometry"] = LineString(route_geom)
+                routes.append(route_gpd)
+        routes = gpd.GeoDataFrame(routes)
+        self.routes.append(routes)
+
+
+if __name__ == "__main__":
+    road_graph = (
+        dask_cudf.read_csv(
+            Config.OSM_GRAPH / "edges.csv",
+            header=None,
+            names=Config.EDGE_COLS,
+            dtype={"u": "int32", "v": "int32", "length": "float32"},
         )
-        pc_bfs = pc_bfs[pc_bfs['vertex'].isin(pcs)]
-        #  predecessor = int(poi_node['predecessor'].values)
-        #   route = []
-        #    while predecessor != -1:
-        #         route.append(predecessor)
-        #         prev_node = pc_bfs[pc_bfs['vertex'] == predecessor]
-        #         predecessor = int(prev_node['predecessor'].values)
-        #     routes.append(route)
-        #     poi_node_dists.append(pc_bfs)
-        # return poi_node_dists, routes
-
-
-road_graph = (
-    dask_cudf.read_csv(
-        Config.OSM_GRAPH / 'edges.csv',
-        header=None,
-        names=Config.EDGE_COLS,
-        dtype={'u': 'int32', 'v': 'int32', 'length': 'float32'}
+        .dropna(subset=["u", "v"])  # type:ignore
+        .fillna(value={"length": 0})
+        .drop_duplicates()
+        .compute()
     )
-    .dropna(subset=['u', 'v'])  # type:ignore
-    .fillna(value={'length': 0})
-    .compute()
-)
-road_graph = cudf.read_csv(Config.OSM_GRAPH / 'edges.csv')
-road_nodes = cudf.read_csv(
-    Config.OSM_GRAPH / 'nodes.csv',
-    header=None,
-    names=Config.NODE_COLS
-)
+    road_nodes = cudf.read_csv(
+        Config.OSM_GRAPH / "nodes.csv",
+        header=None,
+        names=Config.NODE_COLS,
+        dtype={"node_id": "int32", "easting": "int64", "northing": "int64"},
+    ).drop_duplicates()
 
-postcodes = cudf.read_csv(Config.PROCESSED_DATA / 'postcodes.csv')
-postcode_ids = postcodes['node_id'].to_pandas().values
-retail = clean_retail_centres(Config.RAW_DATA / 'retailcentrecentroids.gpkg')
-retail_point: pd.Series = retail.iloc[1]  # type:ignore
+    postcodes = cudf.read_csv(
+        Config.PROCESSED_DATA / "postcodes.csv",
+        dtype={
+            "easting": "int64",
+            "northing": "int64",
+            "node_id": "int32",
+            "postcode": "str",
+        },
+    )
+    retail = cudf.read_csv(
+        Config.PROCESSED_DATA / "retail.csv",
+        dtype={
+            "easting": "int64",
+            "northing": "int64",
+            "node_id": "int32",
+            "id": "str",
+            "buffer": "int64",
+        },
+    )
+    dentists = cudf.read_csv(
+        Config.PROCESSED_DATA / "dentists.csv",
+        dtype={
+            "easting": "int64",
+            "northing": "int64",
+            "node_id": "int32",
+            "PRACTICE_CODE": "str",
+        },
+    )
 
-pc_dist = Routing(
-    road_nodes=road_nodes,
-    road_graph=road_graph,
-    postcode_ids=postcode_ids
-)
-pc_dist.fit(poi=retail_point)
-
-
-# for idx, pc in track(postcodes[100_000:].to_pandas().iterrows(), total=len(postcodes)):
-#     pc_dist = PostCodeDistances(
-#         postcode=pc,
-#         road_graph=road_graph,
-#         road_nodes=road_nodes,
-#         poi=hospitals,
-#         #        buffer=10_000
-#     )
-#     road_filtered = pc_dist.road_nodes
-#     poi_node_dists, routes = pc_dist.fit()
-#     break
-
-# fig, ax = plt.subplots()
-# roads_gpd = gpd.GeoDataFrame(road_filtered.to_pandas(), geometry=gpd.points_from_xy(
-#     road_filtered['easting'].to_pandas(), road_filtered['northing'].to_pandas()
-# ))
-# hp_gpd = gpd.GeoDataFrame(hospitals.to_pandas(), geometry=gpd.points_from_xy(
-#     hospitals['easting'].to_pandas(), hospitals['northing'].to_pandas()))
-# routes_gpd = road_nodes[road_nodes['nodeID'].isin(routes[-1])].to_pandas()
-# route_geom = [xy for xy in zip(routes_gpd.easting, routes_gpd.northing)]
-# route_line = LineString(route_geom)
-# route_gpd = gpd.GeoSeries()
-# route_gpd['geometry'] = route_line
-# roads_gpd.plot(ax=ax)
-# hp_gpd.plot(ax=ax, color='orange')
-# route_gpd.plot(ax=ax, color='red')
-# plt.xlim([min(roads_gpd['easting']), max(roads_gpd['easting'])])
-# plt.ylim([min(roads_gpd['northing']), max(roads_gpd['northing'])])
-# plt.show()
-
-# def haversine_single_point(
-#         self,
-#         multiple: cudf.DataFrame,
-#         point: pd.Series,
-#         k: int
-# ) -> Union[cudf.DataFrame, None]:
-#     multiple['easting_REF'] = int(point['easting'])
-#     multiple['northing_REF'] = int(point['northing'])
-#     multiple['distance'] = cuspatial.haversine_distance(
-#         multiple['easting'],
-#         multiple['northing'],
-#         multiple['easting_REF'],
-#         multiple['northing_REF']
-#     )
-#     multiple.drop(
-#         ['easting_REF', 'northing_REF'], axis=1, inplace=True
-#     )
-#     nearest = multiple.nsmallest(k, 'distance')
-#     multiple.drop(['distance'], axis=1, inplace=True)
-#     return nearest
+    poi_dict = {"dentists": dentists, "retail": retail}
+    for key, df in poi_dict.items():
+        routing = Routing(
+            road_graph=road_graph, road_nodes=road_nodes, postcodes=postcodes, pois=df
+        )
+        routing.fit()
+        routing.dists.to_csv(Config.OUT_DATA / f"{key}_dist.csv", index=False)

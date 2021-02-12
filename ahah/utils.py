@@ -46,7 +46,9 @@ def clean_retail_centres(path: Path) -> cudf.DataFrame:
     return retail
 
 
-def clean_dentists(path: Path) -> cudf.DataFrame:
+def clean_dentists(path: Path, postcodes: cudf.DataFrame) -> cudf.DataFrame:
     dentists = cudf.read_csv(path)
     dentists = dentists[["PRACTICE_CODE", "PRAC_POSTCODE"]].drop_duplicates()
+    dentists.rename(columns={"PRAC_POSTCODE": "postcode"}, inplace=True)
+    dentists = dentists.merge(postcodes, on="postcode")  # type: ignore
     return dentists

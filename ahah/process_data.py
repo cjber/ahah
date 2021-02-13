@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Union
 
 import cudf
-from cuml.neighbors import NearestNeighbors  # type: ignore
+from cuml.neighbors import NearestNeighbors
 import pandas as pd
 
 from ahah.utils import Config, clean_dentists, clean_postcodes, clean_retail_centres
@@ -38,8 +38,9 @@ def get_buffers(
 
     nbrs = NearestNeighbors(n_neighbors=k, output_type="numpy").fit(poi_pts)
     distances, indices = nbrs.kneighbors(pc_pts)
-    distances = distances[:, k - 1]
-    indices = indices[:, k - 1]
+
+    distances = distances.flatten()
+    indices = indices.flatten()
 
     poi_nodes = poi.iloc[indices]["node_id"].reset_index(drop=True)
     buffer_cdf = cudf.DataFrame({"node_id": poi_nodes, "buffer": distances})
@@ -47,6 +48,7 @@ def get_buffers(
     buffer_cdf = buffer_cdf.sort_values("buffer", ascending=False).drop_duplicates(
         "node_id"
     )
+    assert buffer_cdf.buffer.min() != 0  # don't have 0 distance buffers
     return poi.merge(buffer_cdf, on="node_id")  # type: ignore
 
 
@@ -79,8 +81,8 @@ if __name__ == "__main__":
         road_nodes=road_nodes,
         k=1,
     )
-    retail = get_buffers(poi=retail, postcodes=postcodes, k=5)
-    dentists = get_buffers(poi=dentists, postcodes=postcodes, k=5)
+    retail = get_buffers(poi=retail, postcodes=postcodes, k=10)
+    dentists = get_buffers(poi=dentists, postcodes=postcodes, k=10)
 
     dentists.to_csv(Config.PROCESSED_DATA / "dentists.csv", index=False)
     retail.to_csv(Config.PROCESSED_DATA / "retail.csv", index=False)

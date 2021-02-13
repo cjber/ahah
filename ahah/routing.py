@@ -30,8 +30,8 @@ class Routing:
         self.road_nodes = road_nodes
 
         self.dists = cudf.DataFrame(
-            {"id": self.postcode_ids, "distance": np.inf},
-            dtype={"id": "int32", "distance": "float"},
+            {"node_id": self.postcode_ids, "distance": np.inf},
+            dtype={"node_id": "int32", "distance": "float"},
         )
         self.routes = []
 
@@ -55,8 +55,8 @@ class Routing:
         ).drop(["x", "y"], axis=1)
 
         sub_edges = self.road_graph[
-            self.road_graph["v"].isin(node_subset["id"])
-            | self.road_graph["u"].isin(node_subset["id"])
+            self.road_graph["v"].isin(node_subset["node_id"])
+            | self.road_graph["u"].isin(node_subset["node_id"])
         ]
         sub_graph = cugraph.Graph()
         sub_graph.from_cudf_edgelist(
@@ -111,7 +111,7 @@ class Routing:
 
             if len(route) > 1:
                 route_df: cudf.DataFrame = (
-                    cudf.DataFrame({"id": route})
+                    cudf.DataFrame({"node_id": route})
                     .merge(self.road_nodes)
                     .to_pandas()  # type:ignore
                 )
@@ -149,7 +149,6 @@ if __name__ == "__main__":
             "easting": "int64",
             "northing": "int64",
             "node_id": "int32",
-            "postcode": "str",
         },
     )
     retail = cudf.read_csv(
@@ -158,7 +157,6 @@ if __name__ == "__main__":
             "easting": "int64",
             "northing": "int64",
             "node_id": "int32",
-            "id": "str",
             "buffer": "int64",
         },
     )
@@ -168,7 +166,7 @@ if __name__ == "__main__":
             "easting": "int64",
             "northing": "int64",
             "node_id": "int32",
-            "PRACTICE_CODE": "str",
+            "buffer": "int64",
         },
     )
 

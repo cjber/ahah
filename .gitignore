@@ -5,6 +5,5 @@ __pycache__
 
 .venv
 .vim
-.empty
 .typings
 .pytest_cache

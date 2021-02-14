@@ -28,7 +28,7 @@ class HiddenPrints:
         sys.stdout = self._original_stdout
 
 
-def clean_postcodes(path: Path) -> cudf.DataFrame:
+def clean_postcodes(path: Path, exclude_scotland: bool = True) -> cudf.DataFrame:
     pc_path = Path(path).glob("**/*.csv")
     postcodes = dask_cudf.read_csv(list(pc_path), header=None, usecols=[0, 2, 3])
     postcodes = postcodes.rename(  # type: ignore
@@ -36,7 +36,37 @@ def clean_postcodes(path: Path) -> cudf.DataFrame:
     )
     postcodes = postcodes[(postcodes.easting != 0) & (postcodes.northing != 0)]
     postcodes = postcodes.drop_duplicates(subset=["easting", "northing"])
-    return postcodes.compute()
+    postcodes = postcodes.compute()
+
+    if exclude_scotland:
+        postcodes = postcodes[
+            ~postcodes["postcode"]
+            .str[:2]
+            .isin(
+                [
+                    "AB",
+                    "DD",
+                    "DG",
+                    "EH",
+                    "FK",
+                    "HS",
+                    "IV",
+                    "KA",
+                    "KW",
+                    "KY",
+                    "ML",
+                    "PA",
+                    "PH",
+                    "TD",
+                    "ZE",
+                ]
+            )
+        ]
+        postcodes = postcodes[~postcodes["postcode"].str.contains("^G[0-9].*")]
+    return postcodes
+
+
+clean_postcodes(path=Path("data/raw/postcodes"))
 
 
 def clean_retail_centres(path: Path) -> cudf.DataFrame:

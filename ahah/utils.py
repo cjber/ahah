@@ -66,9 +66,6 @@ def clean_postcodes(path: Path, exclude_scotland: bool = True) -> cudf.DataFrame
     return postcodes
 
 
-clean_postcodes(path=Path("data/raw/postcodes"))
-
-
 def clean_retail_centres(path: Path) -> cudf.DataFrame:
     retail = gpd.read_file(path)
     retail["easting"], retail["northing"] = retail.geometry.x, retail.geometry.y

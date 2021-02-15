@@ -39,7 +39,7 @@ if __name__ == "__main__":
     # contains english counties + england, scotland and wales
     counties = sources.subregions.great_britain.available
     counties = [
-        county for county in counties if county not in ["england", "scotland", "wales"]
+        county for county in counties if county not in ["england", "scotland"]
     ]
 
     for county in tqdm(counties):

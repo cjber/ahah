@@ -7,17 +7,17 @@ get_osm_data:
     nfiles: 50
   outs:
   - path: data/processed/osm/edges.csv
-    md5: 94996700f89706bb63fe765cbed3d992
-    size: 777911439
+    md5: 878a55244e1e5fa29949c02a86801146
+    size: 855265062
   - path: data/processed/osm/nodes.csv
-    md5: 82655a234c289c8658243706e49e428b
-    size: 1245596418
+    md5: 418efa75762258489ca64b22258cab01
+    size: 1372182605
 process_data:
   cmd: python -m ahah.process_data
   deps:
   - path: data/processed/osm/nodes.csv
-    md5: 82655a234c289c8658243706e49e428b
-    size: 1245596418
+    md5: 418efa75762258489ca64b22258cab01
+    size: 1372182605
   - path: data/raw/nhs-dent-stat-eng-19-20-anx3-act.csv
     md5: a68f3ec0f6c152f5b06b3d7646a721ec
     size: 122879281
@@ -30,33 +30,33 @@ process_data:
     size: 544768
   outs:
   - path: data/processed/dentists.csv
-    md5: 5215767d9a43f0299d14e6ed76288c69
-    size: 177826
+    md5: 6cf5f1d74ec20bb910d7056f4abe5043
+    size: 177682
   - path: data/processed/postcodes.csv
-    md5: ec1cb53370467680269c21c555092175
-    size: 50700211
+    md5: 3f4ede2011711a15d37682d6abfda300
+    size: 50669949
   - path: data/processed/retail.csv
-    md5: 60202c83a72beca4ac4797f229ed351e
-    size: 149081
+    md5: cb819e908f019b0d8635324ee1576eb7
+    size: 149009
 routing:
   cmd: python -m ahah.routing
   deps:
   - path: data/processed/dentists.csv
-    md5: 5215767d9a43f0299d14e6ed76288c69
-    size: 177826
+    md5: 6cf5f1d74ec20bb910d7056f4abe5043
+    size: 177682
   - path: data/processed/osm/edges.csv
-    md5: 94996700f89706bb63fe765cbed3d992
-    size: 777911439
+    md5: 878a55244e1e5fa29949c02a86801146
+    size: 855265062
   - path: data/processed/postcodes.csv
-    md5: ec1cb53370467680269c21c555092175
-    size: 50700211
+    md5: 3f4ede2011711a15d37682d6abfda300
+    size: 50669949
   - path: data/processed/retail.csv
-    md5: 60202c83a72beca4ac4797f229ed351e
-    size: 149081
+    md5: cb819e908f019b0d8635324ee1576eb7
+    size: 149009
   outs:
   - path: data/out/dentists_dist.csv
-    md5: f7417f1b3f915bdb9e08c23ed6ef7f7d
-    size: 19136851
+    md5: da717a26addb2eaf4ac88c1f66f7c413
+    size: 21071918
   - path: data/out/retail_dist.csv
-    md5: 70ebb560ce711674a33e4f447673eafc
-    size: 18963545
+    md5: 1b048fe95e0d8f0e1d59961504464780
+    size: 20415410

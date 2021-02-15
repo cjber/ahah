@@ -22,9 +22,8 @@ This stage prepares the `nodes`, `postcodes`, and `poi` data for use in RAPIDS `
 * Clean raw data
 * Find nearest road node to each postcode and point of interest using GPU accelerated K Means Clustering
 * Determine minimum buffer distance to use for each point of interest
-  * Nearest 10 points of interest to each postcode using K Means
-  * Find distances returned for each POI neighbour
-  * For each POI the maximum distance to associated postcodes is taken and saved as a buffer for this POI
+  * Distances returned for nearest 10 points of interest to each postcode using K Means
+  * For each unique POI the maximum distance to associated postcodes is taken and saved as a buffer for this POI
 * All processed data written to respective files
 
 ### Routing `ahah/routing.py`

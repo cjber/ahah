@@ -5,7 +5,7 @@ from tqdm import tqdm
 from ahah.utils import Config
 
 
-def process_pbf(pbf_name: str, network_type: str = "walking") -> None:
+def process_pbf(pbf_name: str, network_type: str = "driving") -> None:
     """
     Read OSM pbf and create network graph, saves to csvs.
 

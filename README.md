@@ -4,7 +4,7 @@ This repository contains the python code used to find distances to various healt
 
 ## Workflow
 
-### Get Open Street Map data
+### Get Open Street Map data `ahah/get_osm_data.py`
 
 _NOTE: This may be overhauled to use the `great_britain` data dump. For now this uses too much memory._
 
@@ -12,10 +12,10 @@ Open Street Map produces `pbf` files containing information regarding the road n
 
 * Download `pbf` files
 * Get `nodes` and `edges` for road network
-* Convert `crs` from `EPSG:4326` to `EPSG:27700` British National Grid, which uses a planal coordinate system
+* Convert `crs` from `EPSG:4326` to `EPSG:27700` British National Grid, which uses a planar coordinate system
 * Write `nodes` and `edges` for each `pbf` into combined files
 
-### Process Data
+### Process Data `ahah/process_data.py`
 
 This stage prepares the `nodes`, `postcodes`, and `poi` data for use in RAPIDS `cugraph`. This stage also makes use of utility functions to assist with data preparation from the raw data sources.
 
@@ -27,7 +27,7 @@ This stage prepares the `nodes`, `postcodes`, and `poi` data for use in RAPIDS `
   * For each POI the maximum distance to associated postcodes is taken and saved as a buffer for this POI
 * All processed data written to respective files
 
-### Routing
+### Routing `ahah/routing.py`
 
 The routing stage of this project primarily makes use of the RAPIDS `cugraph` library. This stage iterates sequentially over each POI of a certain type and finds routes to every postcode within a certain buffer.
 

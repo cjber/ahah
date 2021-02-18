@@ -4,16 +4,14 @@ This repository contains the python code used to find distances to various healt
 
 ## Workflow
 
-### Get Open Street Map data `ahah/get_osm_data.py`
+### Get Open Street Map data `ahah/osm_graph.py`
 
-_NOTE: This may be overhauled to use the `great_britain` data dump. For now this uses too much memory._
+Open Street Map produces `pbf` files containing information regarding the road network. This step uses the `pyrosm` python library to download and process the `pbf` file for Great Britain.
 
-Open Street Map produces `pbf` files containing information regarding the road network. This step uses the `pyrosm` python library to download and process these `pbf` files for each county within England, Scotland, and Wales.
-
-* Download `pbf` files
-* Get `nodes` and `edges` for road network
+* Download `pbf` file
+* Get `nodes` and `edges` for road network using `osm4routing`
 * Convert `crs` from `EPSG:4326` to `EPSG:27700` British National Grid, which uses a planar coordinate system
-* Write `nodes` and `edges` for each `pbf` into combined files
+* Write `nodes` and `edges` to `csv`
 
 ### Process Data `ahah/process_data.py`
 

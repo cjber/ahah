@@ -1,6 +1,6 @@
 stages:
-    get_osm_data:
-        cmd: python -m ahah.get_osm_data
+    osm_graph:
+        cmd: python -m ahah.osm_graph
         deps:
             - data/raw/osm_pbf
         outs:

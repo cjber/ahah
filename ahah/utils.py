@@ -15,7 +15,7 @@ class Config:
     OSM_GRAPH = PROCESSED_DATA / "osm"
 
     NODE_COLS = ["node_id", "easting", "northing"]
-    EDGE_COLS = ["u", "v", "length"]
+    EDGE_COLS = ["source", "target", "time_weighted"]
 
 
 class HiddenPrints:

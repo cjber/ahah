@@ -1,9 +1,5 @@
-from pathlib import Path
-from typing import Union
-
 import cudf
 from cuml.neighbors import NearestNeighbors
-import pandas as pd
 
 from ahah.utils import Config, clean_dentists, clean_postcodes, clean_retail_centres
 
@@ -11,20 +7,17 @@ from ahah.utils import Config, clean_dentists, clean_postcodes, clean_retail_cen
 def nearest_nodes(
     df: cudf.DataFrame,
     road_nodes: cudf.DataFrame,
-    k: int,
 ) -> cudf.DataFrame:
     """
-    Get nearest road node to each point in df using K Means, saves to csv.
+    Get nearest road node to each point in a poi df using K Means
 
     :param df cudf.DataFrame: Input df with easting/northing
     :param road_nodes cudf.DataFrame: Road nodes list with easting/northing
-    :param k int: Number of nearest neighbours
-    :param out_path Path: Path to save csv with nearest nodes column
     """
     points = df[["easting", "northing"]]
     node_points = road_nodes[["easting", "northing"]]
 
-    nbrs = NearestNeighbors(n_neighbors=k, output_type="numpy").fit(node_points)
+    nbrs = NearestNeighbors(n_neighbors=1, output_type="numpy").fit(node_points)
     distances, indices = nbrs.kneighbors(points)
 
     return road_nodes.iloc[indices.flatten()].reset_index(drop=True)
@@ -48,16 +41,16 @@ def get_buffers(
     buffer_cdf = buffer_cdf.sort_values("buffer", ascending=False).drop_duplicates(
         "node_id"
     )
-    assert buffer_cdf.buffer.min() != 0  # don't have 0 distance buffers
+    # assert buffer_cdf.buffer.min() != 0  # don't have 0 distance buffers
     return poi.merge(buffer_cdf, on="node_id")  # type: ignore
 
 
 if __name__ == "__main__":
-    road_nodes = cudf.read_csv(
-        Config.OSM_GRAPH / "nodes.csv", header=None, names=Config.NODE_COLS
-    )
+    road_nodes = cudf.read_csv(Config.OSM_GRAPH / "nodes.csv")
 
-    postcodes: cudf.DataFrame = clean_postcodes(path=Config.RAW_DATA / "postcodes")
+    postcodes: cudf.DataFrame = clean_postcodes(
+        path=Config.RAW_DATA / "postcodes", exclude_scotland=False
+    )
     retail: cudf.DataFrame = clean_retail_centres(
         path=Config.RAW_DATA / "retailcentrecentroids.gpkg"
     )
@@ -69,20 +62,17 @@ if __name__ == "__main__":
     postcodes = nearest_nodes(
         df=postcodes,
         road_nodes=road_nodes,
-        k=1,
     )
     dentists = nearest_nodes(
         df=dentists,
         road_nodes=road_nodes,
-        k=1,
     )
     retail = nearest_nodes(
         df=retail,
         road_nodes=road_nodes,
-        k=1,
     )
-    retail = get_buffers(poi=retail, postcodes=postcodes, k=10)
-    dentists = get_buffers(poi=dentists, postcodes=postcodes, k=10)
+    retail = get_buffers(poi=retail, postcodes=postcodes, k=1)
+    dentists = get_buffers(poi=dentists, postcodes=postcodes, k=1)
 
     dentists.to_csv(Config.PROCESSED_DATA / "dentists.csv", index=False)
     retail.to_csv(Config.PROCESSED_DATA / "retail.csv", index=False)

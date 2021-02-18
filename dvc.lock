@@ -7,17 +7,17 @@ get_osm_data:
     nfiles: 50
   outs:
   - path: data/processed/osm/edges.csv
-    md5: 878a55244e1e5fa29949c02a86801146
-    size: 855265062
+    md5: 09702d142f986b176feac9e38bc3f2f6
+    size: 555343026
   - path: data/processed/osm/nodes.csv
-    md5: 418efa75762258489ca64b22258cab01
-    size: 1372182605
+    md5: e8a1ad6d7ba38e3a13477941d8e08735
+    size: 911873003
 process_data:
   cmd: python -m ahah.process_data
   deps:
   - path: data/processed/osm/nodes.csv
-    md5: 418efa75762258489ca64b22258cab01
-    size: 1372182605
+    md5: 0f5149cb57fd001506f5091006946f63
+    size: 227198904
   - path: data/raw/nhs-dent-stat-eng-19-20-anx3-act.csv
     md5: a68f3ec0f6c152f5b06b3d7646a721ec
     size: 122879281
@@ -30,33 +30,61 @@ process_data:
     size: 544768
   outs:
   - path: data/processed/dentists.csv
-    md5: 6cf5f1d74ec20bb910d7056f4abe5043
-    size: 177682
+    md5: 4ffbade7055a36c30456877c1099490f
+    size: 178784
   - path: data/processed/postcodes.csv
-    md5: 3f4ede2011711a15d37682d6abfda300
-    size: 50669949
+    md5: 6561d1b3c94e77999a9d01e103cb3789
+    size: 56297052
   - path: data/processed/retail.csv
-    md5: cb819e908f019b0d8635324ee1576eb7
-    size: 149009
+    md5: 69f3435c4cc485b9157773afc8dc2ad2
+    size: 149854
 routing:
   cmd: python -m ahah.routing
   deps:
   - path: data/processed/dentists.csv
-    md5: 6cf5f1d74ec20bb910d7056f4abe5043
-    size: 177682
+    md5: 4ffbade7055a36c30456877c1099490f
+    size: 178784
   - path: data/processed/osm/edges.csv
-    md5: 878a55244e1e5fa29949c02a86801146
-    size: 855265062
+    md5: b54996edc26c13b6a5c7dc2342813c2a
+    size: 247473486
   - path: data/processed/postcodes.csv
-    md5: 3f4ede2011711a15d37682d6abfda300
-    size: 50669949
+    md5: 6561d1b3c94e77999a9d01e103cb3789
+    size: 56297052
   - path: data/processed/retail.csv
-    md5: cb819e908f019b0d8635324ee1576eb7
-    size: 149009
+    md5: 69f3435c4cc485b9157773afc8dc2ad2
+    size: 149854
   outs:
   - path: data/out/dentists_dist.csv
-    md5: da717a26addb2eaf4ac88c1f66f7c413
-    size: 21071918
+    md5: 57dd95f5fd60fc62d1861f55648f4b77
+    size: 16920709
   - path: data/out/retail_dist.csv
-    md5: 1b048fe95e0d8f0e1d59961504464780
-    size: 20415410
+    md5: c08c6a9c6dc77f8736565a87a002503e
+    size: 15617018
+filter_osm:
+  cmd: python -m ahah.filter_osm
+  deps:
+  - path: data/raw/osm_pbf
+    md5: 4d707fd97877b2018d3cd6d2569be1c5.dir
+    size: 3029370641
+    nfiles: 4
+  outs:
+  - path: data/processed/osm/edges.csv
+    md5: b54996edc26c13b6a5c7dc2342813c2a
+    size: 247473486
+  - path: data/processed/osm/nodes.csv
+    md5: 3c5e5e7ba2da045fe7a0f5bf40892923
+    size: 251466086
+osm_graph:
+  cmd: python -m ahah.osm_graph
+  deps:
+  - path: data/raw/osm_pbf
+    md5: 4d707fd97877b2018d3cd6d2569be1c5.dir
+    size: 3029370641
+    nfiles: 4
+  outs:
+  - path: data/processed/osm/edges.csv
+    md5: b54996edc26c13b6a5c7dc2342813c2a
+    size: 247473486
+  - path: data/processed/osm/nodes.csv
+    md5: 0f5149cb57fd001506f5091006946f63
+    size: 227198904

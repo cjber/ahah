@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import List
 
 import cudf
 import cugraph
@@ -24,7 +24,7 @@ class Routing:
         self.postcode_ids: np.ndarray = (
             postcodes["node_id"].drop_duplicates().to_pandas().values
         )
-        self.pois: pd.DataFrame = pois.drop_duplicates(subset=["node_id"]).to_pandas()  # type: ignore
+        self.pois: pd.DataFrame = pois.drop_duplicates(subset=["node_id"]).to_pandas()
 
         self.road_graph = road_graph
         self.road_nodes = road_nodes
@@ -33,10 +33,11 @@ class Routing:
             {"node_id": self.postcode_ids, "distance": np.inf},
             dtype={"node_id": "int32", "distance": "float"},
         )
-        self.routes = []
+        self.routes: List[gpd.GeoDataFrame] = []
 
     def fit(self, output_routes: bool = False) -> None:
         for _, poi in tqdm(self.pois.iterrows(), total=len(self.pois)):
+            poi["node_id"] = poi["node_id"].astype(np.int32)  # fix this from changing
             self.get_shortest_dists(poi, output_routes=False)
 
     def create_sub_graph(self, poi: pd.Series, buffer) -> cugraph.Graph:
@@ -55,20 +56,21 @@ class Routing:
         ).drop(["x", "y"], axis=1)
 
         sub_edges = self.road_graph[
-            self.road_graph["v"].isin(node_subset["node_id"])
-            | self.road_graph["u"].isin(node_subset["node_id"])
+            self.road_graph["source"].isin(node_subset["node_id"])
+            | self.road_graph["target"].isin(node_subset["node_id"])
         ]
         sub_graph = cugraph.Graph()
         sub_graph.from_cudf_edgelist(
             sub_edges,
-            source="u",
-            destination="v",
-            edge_attr="length",
+            source="source",
+            destination="target",
+            edge_attr="time_weighted",
         )
         return sub_graph
 
     def get_shortest_dists(self, poi: pd.Series, output_routes: bool = False):
         sub_graph = self.create_sub_graph(poi=poi, buffer=poi["buffer"])
+
         with HiddenPrints():
             shortest_paths: cudf.DataFrame = cugraph.filter_unreachable(
                 cugraph.sssp(sub_graph, source=poi["node_id"])
@@ -127,19 +129,16 @@ if __name__ == "__main__":
     road_graph = (
         dask_cudf.read_csv(
             Config.OSM_GRAPH / "edges.csv",
-            header=None,
-            names=Config.EDGE_COLS,
-            dtype={"u": "int32", "v": "int32", "length": "float32"},
+            dtype={"source": "int32", "target": "int32", "time_weighted": "float32"},
         )
-        .dropna(subset=["u", "v"])  # type:ignore
-        .fillna(value={"length": 0})
+        .dropna(subset=["source", "target"])  # type:ignore
+        .fillna(value={"time_weighted": 0})
         .drop_duplicates()
         .compute()
     )
+
     road_nodes = cudf.read_csv(
         Config.OSM_GRAPH / "nodes.csv",
-        header=None,
-        names=Config.NODE_COLS,
         dtype={"node_id": "int32", "easting": "int64", "northing": "int64"},
     ).drop_duplicates()
 
@@ -173,7 +172,10 @@ if __name__ == "__main__":
     poi_dict = {"dentists": dentists, "retail": retail}
     for key, df in poi_dict.items():
         routing = Routing(
-            road_graph=road_graph, road_nodes=road_nodes, postcodes=postcodes, pois=df
+            road_graph=road_graph,
+            road_nodes=road_nodes,
+            postcodes=postcodes,
+            pois=df,
         )
         routing.fit()
         routing.dists.to_csv(Config.OUT_DATA / f"{key}_dist.csv", index=False)

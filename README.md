@@ -22,6 +22,7 @@ This stage prepares the `nodes`, `postcodes`, and `poi` data for use in RAPIDS `
 * Determine minimum buffer distance to use for each point of interest
   * Distances returned for nearest 10 points of interest to each postcode using K Means
   * For each unique POI the maximum distance to associated postcodes is taken and saved as a buffer for this POI
+  * Each POI is assigned the postcodes that fall within their knn, used to determine buffer suitability when converted to a graph
 * All processed data written to respective files
 
 ### Routing `ahah/routing.py`

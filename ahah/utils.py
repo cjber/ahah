@@ -28,7 +28,7 @@ class HiddenPrints:
         sys.stdout = self._original_stdout
 
 
-def clean_postcodes(path: Path, exclude_scotland: bool = True) -> cudf.DataFrame:
+def clean_postcodes(path: Path, exclude_scotland: bool = False) -> cudf.DataFrame:
     pc_path = Path(path).glob("**/*.csv")
     postcodes = dask_cudf.read_csv(list(pc_path), header=None, usecols=[0, 2, 3])
     postcodes = postcodes.rename(  # type: ignore
@@ -70,6 +70,7 @@ def clean_retail_centres(path: Path) -> cudf.DataFrame:
     retail = gpd.read_file(path)
     retail["easting"], retail["northing"] = retail.geometry.x, retail.geometry.y
     retail = cudf.DataFrame(retail.drop("geometry", axis=1))
+    retail = retail[["id", "easting", "northing"]]
     return retail
 
 
@@ -79,3 +80,47 @@ def clean_dentists(path: Path, postcodes: cudf.DataFrame) -> cudf.DataFrame:
     dentists.rename(columns={"PRAC_POSTCODE": "postcode"}, inplace=True)
     dentists = dentists.merge(postcodes, on="postcode")  # type: ignore
     return dentists
+
+
+def clean_gp(path: Path, postcodes: cudf.DataFrame, scot_path: Path) -> cudf.DataFrame:
+    gp = cudf.read_csv(
+        path,
+        names=[
+            "org_code",
+            "name",
+            "grouping",
+            "geography",
+            "a1",
+            "a2",
+            "a3",
+            "a4",
+            "a5",
+            "postcode",
+            "open",
+            "close",
+            "status",
+            "sub_type",
+            "presc",
+            "null",
+        ],
+    )
+    gp = gp[gp["close"].isnull()]
+    gp = gp[["org_code", "postcode"]].drop_duplicates()
+    gp = gp.merge(postcodes, on="postcode")
+
+    import pandas as pd
+
+    gp_scot = pd.ExcelFile(
+        Config.RAW_DATA / "Practice_ContactDetails_Jan2021_v2.xlsx",
+        engine="openpyxl",
+    )
+    gp_scot = pd.read_excel(gp_scot, "Practice Details", skiprows=5)
+    gp_scot = gp_scot[["Practice Code", "Postcode"]].rename(
+        columns={"Practice Code": "org_code", "Postcode": "postcode"}
+    )
+    gp_scot = cudf.from_pandas(gp_scot)
+    gp_scot = gp_scot.merge(postcodes, on="postcode")
+    gp_scot["org_code"] = gp_scot["org_code"].astype(str)
+
+    gp = gp.append(gp_scot)
+    return gp

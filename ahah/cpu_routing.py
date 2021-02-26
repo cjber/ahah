@@ -95,7 +95,7 @@ if __name__ == "__main__":
             names=Config.EDGE_COLS,
             dtype={"u": "int32", "v": "int32", "length": "float32"},
         )
-        .dropna(subset=["u", "v"])
+        .dropna(subset=["source", "target"])
         .fillna(value={"length": 0})
         .drop_duplicates()
         .compute()

@@ -1,9 +1,9 @@
 from typing import List
+import matplotlib.pyplot as plt
 
 import cudf
 import cugraph
 import cuspatial
-import dask_cudf
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -19,75 +19,65 @@ class Routing:
         road_graph: cudf.DataFrame,
         road_nodes: cudf.DataFrame,
         postcodes: cudf.DataFrame,
-        pois: cudf.DataFrame,
+        pois: pd.DataFrame,
     ):
-        self.postcode_ids: np.ndarray = (
-            postcodes["node_id"].drop_duplicates().to_pandas().values
-        )
-        self.pois: pd.DataFrame = pois.drop_duplicates(subset=["node_id"]).to_pandas()
+        self.postcode_ids: np.ndarray = postcodes["node_id"].unique().to_array()
+        self.pois = pois.drop_duplicates("node_id")
 
         self.road_graph = road_graph
         self.road_nodes = road_nodes
 
-        self.dists = cudf.DataFrame(
-            {"node_id": self.postcode_ids, "distance": np.inf},
-            dtype={"node_id": "int32", "distance": "float"},
-        )
+        self.dists = pd.DataFrame()
         self.routes: List[gpd.GeoDataFrame] = []
 
     def fit(self, output_routes: bool = False) -> None:
-        for _, poi in tqdm(self.pois.iterrows(), total=len(self.pois)):
-            poi["node_id"] = poi["node_id"].astype(np.int32)  # fix this from changing
-            self.get_shortest_dists(poi, output_routes=False)
+        for poi in tqdm(self.pois.itertuples(), total=len(self.pois.index)):
+            self.get_shortest_dists(poi, output_routes=output_routes)
 
-    def create_sub_graph(self, poi: pd.Series, buffer) -> cugraph.Graph:
-        poi_pt: pd.Series = poi[["easting", "northing"]]
+    def create_sub_graph(self, poi) -> cugraph.Graph:
+        buffer = poi.buffer
+        while True:
+            node_subset = cuspatial.points_in_spatial_window(
+                min_x=poi.easting - buffer,
+                max_x=poi.easting + buffer,
+                min_y=poi.northing - buffer,
+                max_y=poi.northing + buffer,
+                xs=self.road_nodes["easting"],
+                ys=self.road_nodes["northing"],
+            )
+            node_subset = node_subset.merge(
+                self.road_nodes, left_on=["x", "y"], right_on=["easting", "northing"]
+            ).drop(["x", "y"], axis=1)
+            sub_edges = self.road_graph[
+                self.road_graph["source"].isin(node_subset["node_id"])
+                | self.road_graph["target"].isin(node_subset["node_id"])
+            ]
+            sub_graph = cugraph.Graph()
+            sub_graph.from_cudf_edgelist(
+                sub_edges,
+                source="source",
+                destination="target",
+                edge_attr="time_weighted",
+            )
 
-        node_subset = cuspatial.points_in_spatial_window(
-            min_x=poi_pt["easting"] - buffer,
-            max_x=poi_pt["easting"] + buffer,
-            min_y=poi_pt["northing"] - buffer,
-            max_y=poi_pt["northing"] + buffer,
-            xs=self.road_nodes["easting"],
-            ys=self.road_nodes["northing"],
-        )
-        node_subset = node_subset.merge(
-            self.road_nodes, left_on=["x", "y"], right_on=["easting", "northing"]
-        ).drop(["x", "y"], axis=1)
+            if (
+                np.isin(poi.pc_ids, sub_graph.nodes().to_array()).sum()
+                == poi.pc_ids.size
+            ):
+                return sub_graph
+            buffer = (buffer + 100) * 2
+            print(f"Increasing buffer size to {buffer}")
 
-        sub_edges = self.road_graph[
-            self.road_graph["source"].isin(node_subset["node_id"])
-            | self.road_graph["target"].isin(node_subset["node_id"])
-        ]
-        sub_graph = cugraph.Graph()
-        sub_graph.from_cudf_edgelist(
-            sub_edges,
-            source="source",
-            destination="target",
-            edge_attr="time_weighted",
-        )
-        return sub_graph
-
-    def get_shortest_dists(self, poi: pd.Series, output_routes: bool = False):
-        sub_graph = self.create_sub_graph(poi=poi, buffer=poi["buffer"])
+    def get_shortest_dists(self, poi, output_routes: bool = False):
+        sub_graph = self.create_sub_graph(poi=poi)
 
         with HiddenPrints():
             shortest_paths: cudf.DataFrame = cugraph.filter_unreachable(
-                cugraph.sssp(sub_graph, source=poi["node_id"])
+                cugraph.sssp(sub_graph, source=poi.node_id)
             )  # type: ignore
 
-        pc_dist: cudf.DataFrame = cudf.DataFrame({"vertex": self.postcode_ids}).merge(
-            shortest_paths[shortest_paths.vertex.isin(self.postcode_ids)].reset_index(
-                drop=True
-            ),
-            how="outer",
-        )  # type: ignore
-
-        self.dists["distance"] = np.where(
-            (pc_dist["distance"].to_pandas() < self.dists["distance"].to_pandas()),
-            pc_dist["distance"].to_pandas(),
-            self.dists["distance"].to_pandas(),
-        )
+        pc_dist = shortest_paths[shortest_paths.vertex.isin(self.postcode_ids)]
+        self.dists = self.dists.append(pc_dist.to_pandas())
 
         if output_routes:
             self.process_routes(pc_dist, shortest_paths, k=5)
@@ -122,54 +112,21 @@ class Routing:
                 route_gpd["geometry"] = LineString(route_geom)
                 routes.append(route_gpd)
         routes = gpd.GeoDataFrame(routes)
+        routes.crs = "epsg:27700"
         self.routes.append(routes)
 
 
 if __name__ == "__main__":
-    road_graph = (
-        dask_cudf.read_csv(
-            Config.OSM_GRAPH / "edges.csv",
-            dtype={"source": "int32", "target": "int32", "time_weighted": "float32"},
-        )
-        .dropna(subset=["source", "target"])  # type:ignore
-        .fillna(value={"time_weighted": 0})
-        .drop_duplicates()
-        .compute()
-    )
+    road_graph = cudf.read_parquet(Config.OSM_GRAPH / "edges.parquet")
+    road_nodes = cudf.read_parquet(Config.OSM_GRAPH / "nodes.parquet")
 
-    road_nodes = cudf.read_csv(
-        Config.OSM_GRAPH / "nodes.csv",
-        dtype={"node_id": "int32", "easting": "int64", "northing": "int64"},
-    ).drop_duplicates()
+    postcodes = cudf.read_parquet(Config.PROCESSED_DATA / "postcodes.parquet")
+    retail = pd.read_parquet(Config.PROCESSED_DATA / "retail.parquet")
+    dentists = pd.read_parquet(Config.PROCESSED_DATA / "dentists.parquet")
+    gp = pd.read_parquet(Config.PROCESSED_DATA / "gp.parquet")
 
-    postcodes = cudf.read_csv(
-        Config.PROCESSED_DATA / "postcodes.csv",
-        dtype={
-            "easting": "int64",
-            "northing": "int64",
-            "node_id": "int32",
-        },
-    )
-    retail = cudf.read_csv(
-        Config.PROCESSED_DATA / "retail.csv",
-        dtype={
-            "easting": "int64",
-            "northing": "int64",
-            "node_id": "int32",
-            "buffer": "int64",
-        },
-    )
-    dentists = cudf.read_csv(
-        Config.PROCESSED_DATA / "dentists.csv",
-        dtype={
-            "easting": "int64",
-            "northing": "int64",
-            "node_id": "int32",
-            "buffer": "int64",
-        },
-    )
+    poi_dict = {"retail": retail, "dentists": dentists, "gp": gp}
 
-    poi_dict = {"dentists": dentists, "retail": retail}
     for key, df in poi_dict.items():
         routing = Routing(
             road_graph=road_graph,
@@ -178,4 +135,15 @@ if __name__ == "__main__":
             pois=df,
         )
         routing.fit()
-        routing.dists.to_csv(Config.OUT_DATA / f"{key}_dist.csv", index=False)
+
+        # dists = routing.dists.groupby("vertex").min("distance").reset_index()
+        dists = routing.dists.sort_values("distance").drop_duplicates("vertex")
+        dists = postcodes.merge(
+            cudf.from_pandas(dists), left_on="node_id", right_on="vertex", how="left"
+        ).drop(["vertex", "predecessor"], axis=1)
+        dists.to_csv(Config.OUT_DATA / f"{key}_dist.csv", index=False)
+
+        # plotting fun time
+        dists = dists[dists["distance"] != np.inf].dropna().to_pandas()
+        plt.scatter(dists["easting"], dists["northing"], c=dists["distance"])
+        plt.savefig(fname=f"{key}.png")

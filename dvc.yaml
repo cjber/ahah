@@ -4,26 +4,26 @@ stages:
         deps:
             - data/raw/osm_pbf
         outs:
-            - data/processed/osm/nodes.csv
-            - data/processed/osm/edges.csv
+            - data/processed/osm/nodes.parquet
+            - data/processed/osm/edges.parquet
     process_data:
         cmd: python -m ahah.process_data
         deps:
-            - data/processed/osm/nodes.csv
+            - data/processed/osm/nodes.parquet
             - data/raw/postcodes
             - data/raw/retailcentrecentroids.gpkg
             - data/raw/nhs-dent-stat-eng-19-20-anx3-act.csv
         outs:
-            - data/processed/postcodes.csv
-            - data/processed/retail.csv
-            - data/processed/dentists.csv
+            - data/processed/postcodes.parquet
+            - data/processed/retail.parquet
+            - data/processed/dentists.parquet
     routing:
         cmd: python -m ahah.routing
         deps:
-            - data/processed/osm/edges.csv
-            - data/processed/postcodes.csv
-            - data/processed/retail.csv
-            - data/processed/dentists.csv
+            - data/processed/osm/edges.parquet
+            - data/processed/postcodes.parquet
+            - data/processed/retail.parquet
+            - data/processed/dentists.parquet
         outs:
             - data/out/retail_dist.csv
             - data/out/dentists_dist.csv

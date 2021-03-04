@@ -5,17 +5,31 @@ import sys
 import cudf
 import dask_cudf
 import geopandas as gpd
+import pandas as pd
 
 
 class Config:
+    """Data paths"""
+
     DATA_PATH = Path("data/")
     RAW_DATA = DATA_PATH / "raw"
     PROCESSED_DATA = DATA_PATH / "processed"
     OUT_DATA = DATA_PATH / "out"
     OSM_GRAPH = PROCESSED_DATA / "osm"
 
+    """Column names"""
+
     NODE_COLS = ["node_id", "easting", "northing"]
-    EDGE_COLS = ["source", "target", "time_weighted"]
+    EDGE_COLS = ["source", "target", "time_weighted", "wkt"]
+
+    """NHS Constants"""
+
+    NHS_URL = "https://files.digital.nhs.uk/assets/ods/current/"
+    NHS_FILES = {
+        "gp": "epraccur.zip",
+        "dentists": "egdpprac.zip",
+        "pharmacies": "epharmacyhq.zip",
+    }
 
 
 class HiddenPrints:
@@ -75,9 +89,8 @@ def clean_retail_centres(path: Path) -> cudf.DataFrame:
 
 
 def clean_dentists(path: Path, postcodes: cudf.DataFrame) -> cudf.DataFrame:
-    dentists = cudf.read_csv(path)
-    dentists = dentists[["PRACTICE_CODE", "PRAC_POSTCODE"]].drop_duplicates()
-    dentists.rename(columns={"PRAC_POSTCODE": "postcode"}, inplace=True)
+    dentists = cudf.read_csv(path, usecols=[0, 9], header=None).drop_duplicates()
+    dentists.rename(columns={"0": "dentist", "9": "postcode"}, inplace=True)
     dentists = dentists.merge(postcodes, on="postcode")  # type: ignore
     return dentists
 
@@ -108,10 +121,8 @@ def clean_gp(path: Path, postcodes: cudf.DataFrame, scot_path: Path) -> cudf.Dat
     gp = gp[["org_code", "postcode"]].drop_duplicates()
     gp = gp.merge(postcodes, on="postcode")
 
-    import pandas as pd
-
     gp_scot = pd.ExcelFile(
-        Config.RAW_DATA / "Practice_ContactDetails_Jan2021_v2.xlsx",
+        scot_path,
         engine="openpyxl",
     )
     gp_scot = pd.read_excel(gp_scot, "Practice Details", skiprows=5)
@@ -124,3 +135,10 @@ def clean_gp(path: Path, postcodes: cudf.DataFrame, scot_path: Path) -> cudf.Dat
 
     gp = gp.append(gp_scot)
     return gp
+
+
+def clean_pharmacies(path: Path, postcodes: cudf.DataFrame) -> cudf.DataFrame:
+    pharmacies = cudf.read_csv(path, header=None, usecols=[0, 9])
+    pharmacies.rename(columns={"0": "pharmacy", "9": "postcode"}, inplace=True)
+    pharmacies = pharmacies.merge(postcodes, on="postcode")
+    return pharmacies

@@ -23,7 +23,7 @@ def process_graph(nodes, edges):
     # ].reset_index(drop=True)
 
     # # converts to time in minutes rather than distance
-    speed_dict = {6: 70, 5: 70, 4: 60, 3: 60, 2: 60, 1: 30}
+    speed_dict = {6: 70, 5: 70, 4: 60, 3: 60, 2: 60, 1: 30, 0: 20}
     speed_dict = {key: value * 1.609344 for key, value in speed_dict.items()}
     edges["speed_estimate"] = edges["car_forward"].map(speed_dict)
     edges["time_weighted"] = ((edges["length"] / 1000) / edges["speed_estimate"]) * 60
@@ -33,36 +33,34 @@ def process_graph(nodes, edges):
     # convert node_id to categorical with numberic index then map values to
     # change high int values to lower sequential ones
     # high int breaks with int32
-    id_mapping = (
-        nodes["node_id"]
-        .reset_index()
-        .set_index("node_id")["index"]
-        .to_pandas()
-        .to_dict()
-    )
-    nodes["node_id"] = nodes["node_id"].map(id_mapping)
-    edges["source"] = edges["source"].map(id_mapping)
-    edges["target"] = edges["target"].map(id_mapping)
+    # id_mapping = (
+    #     nodes["node_id"]
+    #     .reset_index()
+    #     .set_index("node_id")["index"]
+    #     .to_pandas()
+    #     .to_dict()
+    # )
+    # nodes["node_id"] = nodes["node_id"].map(id_mapping)
+    # edges["source"] = edges["source"].map(id_mapping)
+    # edges["target"] = edges["target"].map(id_mapping)
 
     nodes["node_id"] = nodes["node_id"].astype("int32")
     edges = edges.astype({"source": "int32", "target": "int32"})
 
-    nodes = nodes[
-        nodes["node_id"].isin(edges["source"]) & nodes["node_id"].isin(edges["target"])
-    ].reset_index(drop=True)
-    edges = edges[
-        edges["source"].isin(nodes["node_id"]) | edges["target"].isin(nodes["node_id"])
-    ].reset_index(drop=True)
+    # nodes = nodes[
+    #     nodes["node_id"].isin(edges["source"]) & nodes["node_id"].isin(edges["target"])
+    # ].reset_index(drop=True)
+    # edges = edges[
+    #     edges["source"].isin(nodes["node_id"]) | edges["target"].isin(nodes["node_id"])
+    # ].reset_index(drop=True)
 
     # convert to BNG
+    transformer: Transformer = Transformer.from_crs(4326, 27700)
     lon = nodes["lon"].values
     lat = nodes["lat"].values
-    transformer: Transformer = Transformer.from_crs(4326, 27700)
     bng = [
-        transformer.transform(y, x)
-        for _, (x, y) in tqdm(enumerate(zip(lon, lat)), total=len(lat), ascii=True)
+        transformer.transform(y, x) for (x, y) in tqdm(zip(lon, lat), total=len(nodes))
     ]
-
     nodes = nodes.join(cudf.DataFrame(bng, columns=["easting", "northing"]))
     return nodes, edges
 
@@ -85,5 +83,5 @@ if __name__ == "__main__":
     edges[Config.EDGE_COLS].to_parquet(
         Config.OSM_GRAPH / "edges.parquet",
         index=False,
-        dtypes=["int32", "int", "int"],
+        dtypes=["int32", "int", "int", "str"],
     )

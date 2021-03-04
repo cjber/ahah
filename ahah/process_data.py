@@ -4,9 +4,10 @@ from cuml.neighbors.nearest_neighbors import NearestNeighbors
 from ahah.utils import (
     Config,
     clean_dentists,
+    clean_gp,
+    clean_pharmacies,
     clean_postcodes,
     clean_retail_centres,
-    clean_gp,
 )
 
 
@@ -72,13 +73,16 @@ if __name__ == "__main__":
         path=Config.RAW_DATA / "retailcentrecentroids.gpkg"
     )
     dentists: cudf.DataFrame = clean_dentists(
-        path=Config.RAW_DATA / "nhs-dent-stat-eng-19-20-anx3-act.csv",
+        path=Config.RAW_DATA / Config.NHS_FILES["dentists"],
         postcodes=postcodes,
     )
-    gp = clean_gp(
-        path=Config.RAW_DATA / "epraccur.csv",
+    gp: cudf.DataFrame = clean_gp(
+        path=Config.RAW_DATA / Config.NHS_FILES["gp"],
         postcodes=postcodes,
         scot_path=Config.RAW_DATA / "Practice_ContactDetails_Jan2021_v2.xlsx",
+    )
+    pharmacies: cudf.DataFrame = clean_pharmacies(
+        path=Config.RAW_DATA / Config.NHS_FILES["pharmacies"], postcodes=postcodes
     )
 
     postcodes = nearest_nodes(df=postcodes, road_nodes=road_nodes)

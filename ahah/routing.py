@@ -1,10 +1,10 @@
 from typing import List
-import matplotlib.pyplot as plt
 
 import cudf
 import cugraph
 import cuspatial
 import geopandas as gpd
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from shapely.geometry import LineString
@@ -33,6 +33,8 @@ class Routing:
     def fit(self, output_routes: bool = False) -> None:
         for poi in tqdm(self.pois.itertuples(), total=len(self.pois.index)):
             self.get_shortest_dists(poi, output_routes=output_routes)
+
+        self.dists = self.dists.sort_values("distance").drop_duplicates("vertex")
 
     def create_sub_graph(self, poi) -> cugraph.Graph:
         buffer = poi.buffer
@@ -70,7 +72,6 @@ class Routing:
 
     def get_shortest_dists(self, poi, output_routes: bool = False):
         sub_graph = self.create_sub_graph(poi=poi)
-
         with HiddenPrints():
             shortest_paths: cudf.DataFrame = cugraph.filter_unreachable(
                 cugraph.sssp(sub_graph, source=poi.node_id)
@@ -83,13 +84,12 @@ class Routing:
             self.process_routes(pc_dist, shortest_paths, k=5)
 
     def process_routes(self, pc_dist, shortest_paths, k):
-        dests = pc_dist.drop_duplicates().nsmallest(k, "distance")
+        dests = pc_dist.nsmallest(k, "distance")
         routes = []
         for _, dest in tqdm(dests.to_pandas().iterrows()):
             vert = int(dest["vertex"])
             route = []
 
-            # TODO: order seems random but nodes are correct
             while vert != -1:
                 vert = int(
                     shortest_paths[shortest_paths["vertex"] == vert][
@@ -136,14 +136,12 @@ if __name__ == "__main__":
         )
         routing.fit()
 
-        # dists = routing.dists.groupby("vertex").min("distance").reset_index()
-        dists = routing.dists.sort_values("distance").drop_duplicates("vertex")
         dists = postcodes.merge(
             cudf.from_pandas(dists), left_on="node_id", right_on="vertex", how="left"
         ).drop(["vertex", "predecessor"], axis=1)
         dists.to_csv(Config.OUT_DATA / f"{key}_dist.csv", index=False)
 
-        # plotting fun time
+        # temporary plots
         dists = dists[dists["distance"] != np.inf].dropna().to_pandas()
         plt.scatter(dists["easting"], dists["northing"], c=dists["distance"])
         plt.savefig(fname=f"{key}.png")

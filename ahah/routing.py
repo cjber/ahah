@@ -20,6 +20,9 @@ class Routing:
         road_nodes: cudf.DataFrame,
         postcodes: cudf.DataFrame,
         pois: pd.DataFrame,
+        buffer: bool = True,
+        output_routes: bool = False,
+        num_routes: int = 5,
     ):
         self.postcode_ids: np.ndarray = postcodes["node_id"].unique().to_array()
         self.pois = pois.drop_duplicates("node_id")
@@ -30,9 +33,15 @@ class Routing:
         self.dists = pd.DataFrame()
         self.routes: List[gpd.GeoDataFrame] = []
 
-    def fit(self, output_routes: bool = False) -> None:
+        self.buffer = buffer
+        self.output_routes = output_routes
+        if self.output_routes:
+            self.num_routes = num_routes
+
+    def fit(self) -> None:
         for poi in tqdm(self.pois.itertuples(), total=len(self.pois.index)):
-            self.get_shortest_dists(poi, output_routes=output_routes)
+            if any(np.isin(poi.pc_ids, self.postcode_ids)):
+                self.get_shortest_dists(poi)
 
         self.dists = self.dists.sort_values("distance").drop_duplicates("vertex")
 
@@ -62,31 +71,36 @@ class Routing:
                 edge_attr="time_weighted",
             )
 
-            if (
-                np.isin(poi.pc_ids, sub_graph.nodes().to_array()).sum()
-                == poi.pc_ids.size
-            ):
+            if all(np.isin(poi.pc_ids, sub_graph.nodes().to_array())):
                 return sub_graph
             buffer = (buffer + 100) * 2
-            print(f"Increasing buffer size to {buffer}")
 
-    def get_shortest_dists(self, poi, output_routes: bool = False):
-        sub_graph = self.create_sub_graph(poi=poi)
+    def get_shortest_dists(self, poi):
+        if self.buffer:
+            graph = self.create_sub_graph(poi=poi)
+        else:
+            graph = cugraph.Graph()
+            graph.from_cudf_edgelist(
+                self.road_graph,
+                source="source",
+                destination="target",
+                edge_attr="time_weighted",
+            )
         with HiddenPrints():
             shortest_paths: cudf.DataFrame = cugraph.filter_unreachable(
-                cugraph.sssp(sub_graph, source=poi.node_id)
+                cugraph.sssp(graph, source=poi.node_id)
             )  # type: ignore
 
         pc_dist = shortest_paths[shortest_paths.vertex.isin(self.postcode_ids)]
         self.dists = self.dists.append(pc_dist.to_pandas())
 
-        if output_routes:
-            self.process_routes(pc_dist, shortest_paths, k=5)
+        if self.output_routes:
+            self.process_routes(pc_dist, shortest_paths, num_routes=self.num_routes)
 
-    def process_routes(self, pc_dist, shortest_paths, k):
-        dests = pc_dist.nsmallest(k, "distance")
+    def process_routes(self, pc_dist, shortest_paths, num_routes):
+        dests = pc_dist.nsmallest(num_routes, "distance").to_pandas()
         routes = []
-        for _, dest in tqdm(dests.to_pandas().iterrows()):
+        for _, dest in dests.iterrows():
             vert = int(dest["vertex"])
             route = []
 
@@ -98,21 +112,24 @@ class Routing:
                 )
                 if vert != -1:
                     route.append(vert)
-                else:
-                    route.append(int(dest["vertex"]))
-
             if len(route) > 1:
-                route_df: cudf.DataFrame = (
+                # this needs to be an ordered merge
+                route_df = (
                     cudf.DataFrame({"node_id": route})
-                    .merge(self.road_nodes)
-                    .to_pandas()  # type:ignore
+                    .reset_index()
+                    .merge(self.road_nodes, sort=False, on="node_id")
+                    .sort_values("index")
+                    .to_pandas()
                 )
                 route_geom = [xy for xy in zip(route_df.easting, route_df.northing)]
-                route_gpd = gpd.GeoSeries()
-                route_gpd["geometry"] = LineString(route_geom)
-                routes.append(route_gpd)
-        routes = gpd.GeoDataFrame(routes)
-        routes.crs = "epsg:27700"
+                if route_geom:
+                    route_gpd = gpd.GeoSeries()
+                    route_gpd["geometry"] = LineString(route_geom)
+                    route_gpd["dest"] = int(dest["vertex"])
+                    routes.append(route_gpd)
+        if routes:
+            routes = gpd.GeoDataFrame(routes)
+            routes.crs = "epsg:27700"
         self.routes.append(routes)
 
 
@@ -121,11 +138,17 @@ if __name__ == "__main__":
     road_nodes = cudf.read_parquet(Config.OSM_GRAPH / "nodes.parquet")
 
     postcodes = cudf.read_parquet(Config.PROCESSED_DATA / "postcodes.parquet")
-    retail = pd.read_parquet(Config.PROCESSED_DATA / "retail.parquet")
-    dentists = pd.read_parquet(Config.PROCESSED_DATA / "dentists.parquet")
     gp = pd.read_parquet(Config.PROCESSED_DATA / "gp.parquet")
+    # retail = pd.read_parquet(Config.PROCESSED_DATA / "retail.parquet")
+    # dentists = pd.read_parquet(Config.PROCESSED_DATA / "dentists.parquet")
+    # pharmacies = pd.read_parquet(Config.PROCESSED_DATA / "pharmacies.parquet")
 
-    poi_dict = {"retail": retail, "dentists": dentists, "gp": gp}
+    poi_dict = {
+        #        "retail": retail,
+        # "dentists": dentists,
+        "gp": gp,
+        #        "pharmacies": pharmacies,
+    }
 
     for key, df in poi_dict.items():
         routing = Routing(
@@ -136,6 +159,7 @@ if __name__ == "__main__":
         )
         routing.fit()
 
+        dists = routing.dists
         dists = postcodes.merge(
             cudf.from_pandas(dists), left_on="node_id", right_on="vertex", how="left"
         ).drop(["vertex", "predecessor"], axis=1)

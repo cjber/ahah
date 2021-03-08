@@ -11,19 +11,28 @@ stages:
         deps:
             - data/processed/osm/nodes.parquet
             - data/raw/postcodes
-            - data/raw/retailcentrecentroids.gpkg
-            - data/raw/nhs-dent-stat-eng-19-20-anx3-act.csv
+            - data/raw/epharmacyhq.zip
+            - data/raw/scot/Practice_ContactDetails_Jan2021_v2.xlsx
+            # - data/raw/retailcentrecentroids.gpkg
+            # - data/raw/egdpprac.zip
+            # - data/raw/epraccur.zip
         outs:
             - data/processed/postcodes.parquet
-            - data/processed/retail.parquet
-            - data/processed/dentists.parquet
+            - data/processed/gp.parquet
+            # - data/processed/retail.parquet
+            # - data/processed/dentists.parquet
+            # - data/processed/pharmacies.parquet
     routing:
         cmd: python -m ahah.routing
         deps:
             - data/processed/osm/edges.parquet
             - data/processed/postcodes.parquet
-            - data/processed/retail.parquet
-            - data/processed/dentists.parquet
+            - data/processed/gp.parquet
+            # - data/processed/retail.parquet
+            # - data/processed/dentists.parquet
+            # - data/processed/pharmacies.parquet
         outs:
-            - data/out/retail_dist.csv
-            - data/out/dentists_dist.csv
+            - data/out/gp_dist.csv
+            # - data/out/retail_dist.csv
+            # - data/out/dentists_dist.csv
+            # - data/out/pharmacies_dist.csv

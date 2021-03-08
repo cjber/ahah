@@ -3,7 +3,6 @@ from pathlib import Path
 import sys
 
 import cudf
-import dask_cudf
 import geopandas as gpd
 import pandas as pd
 
@@ -42,42 +41,34 @@ class HiddenPrints:
         sys.stdout = self._original_stdout
 
 
-def clean_postcodes(path: Path, exclude_scotland: bool = False) -> cudf.DataFrame:
-    pc_path = Path(path).glob("**/*.csv")
-    postcodes = dask_cudf.read_csv(list(pc_path), header=None, usecols=[0, 2, 3])
-    postcodes = postcodes.rename(  # type: ignore
-        columns={"0": "postcode", "2": "easting", "3": "northing"}
+def clean_postcodes(path: Path, current: bool) -> cudf.DataFrame:
+    path = Config.RAW_DATA / "onspd/ONSPD_FEB_2021_UK.csv"
+    postcodes = cudf.read_csv(
+        path,
+        usecols=["pcd", "oseast1m", "osnrth1m", "doterm", "ctry"],
+        dtype={
+            "pcd": "str",
+            "oseast1m": "int",
+            "osnrth1m": "int",
+            "doterm": "str",
+            "ctry": "str",
+        },
     )
-    postcodes = postcodes[(postcodes.easting != 0) & (postcodes.northing != 0)]
-    postcodes = postcodes.drop_duplicates(subset=["easting", "northing"])
-    postcodes = postcodes.compute()
+    postcodes = postcodes[
+        postcodes["ctry"].isin(["E92000001", "W92000004", "S92000003"])
+    ].drop("ctry", axis=1)
+    postcodes = postcodes.rename(
+        columns={"pcd": "postcode", "oseast1m": "easting", "osnrth1m": "northing"}
+    )
 
-    if exclude_scotland:
-        postcodes = postcodes[
-            ~postcodes["postcode"]
-            .str[:2]
-            .isin(
-                [
-                    "AB",
-                    "DD",
-                    "DG",
-                    "EH",
-                    "FK",
-                    "HS",
-                    "IV",
-                    "KA",
-                    "KW",
-                    "KY",
-                    "ML",
-                    "PA",
-                    "PH",
-                    "TD",
-                    "ZE",
-                ]
-            )
-        ]
-        postcodes = postcodes[~postcodes["postcode"].str.contains("^G[0-9].*")]
-    return postcodes
+    postcodes["postcode"] = postcodes["postcode"].str.replace(" ", "")
+    postcodes["postcode"] = (
+        postcodes.postcode.str[:-3] + " " + postcodes.postcode.str[-3:]
+    )
+    postcodes = postcodes.dropna(subset=["easting", "northing"])
+    if current:
+        return postcodes[postcodes["doterm"].isnull()].drop("doterm", axis=1)
+    return postcodes.drop("doterm", axis=1)
 
 
 def clean_retail_centres(path: Path) -> cudf.DataFrame:
@@ -117,22 +108,20 @@ def clean_gp(path: Path, postcodes: cudf.DataFrame, scot_path: Path) -> cudf.Dat
             "null",
         ],
     )
-    gp = gp[gp["close"].isnull()]
-    gp = gp[["org_code", "postcode"]].drop_duplicates()
+    gp = gp[gp["close"].isnull()][["org_code", "postcode"]].drop_duplicates()
     gp = gp.merge(postcodes, on="postcode")
 
     gp_scot = pd.ExcelFile(
         scot_path,
         engine="openpyxl",
     )
-    gp_scot = pd.read_excel(gp_scot, "Practice Details", skiprows=5)
+    gp_scot = pd.read_excel(gp_scot, "Practice Details", skiprows=5).dropna(how="all")
     gp_scot = gp_scot[["Practice Code", "Postcode"]].rename(
         columns={"Practice Code": "org_code", "Postcode": "postcode"}
     )
     gp_scot = cudf.from_pandas(gp_scot)
     gp_scot = gp_scot.merge(postcodes, on="postcode")
     gp_scot["org_code"] = gp_scot["org_code"].astype(str)
-
     gp = gp.append(gp_scot)
     return gp
 

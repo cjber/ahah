@@ -67,34 +67,49 @@ def get_buffers(
 
 if __name__ == "__main__":
     road_nodes = cudf.read_parquet(Config.OSM_GRAPH / "nodes.parquet")
-    postcodes: cudf.DataFrame = clean_postcodes(path=Config.RAW_DATA / "postcodes")
+    all_postcodes: cudf.DataFrame = clean_postcodes(
+        path=Config.RAW_DATA / "onspd/ONSPD_FEB_2021_UK.csv", current=False
+    )
 
-    retail: cudf.DataFrame = clean_retail_centres(
-        path=Config.RAW_DATA / "retailcentrecentroids.gpkg"
-    )
-    dentists: cudf.DataFrame = clean_dentists(
-        path=Config.RAW_DATA / Config.NHS_FILES["dentists"],
-        postcodes=postcodes,
-    )
     gp: cudf.DataFrame = clean_gp(
         path=Config.RAW_DATA / Config.NHS_FILES["gp"],
-        postcodes=postcodes,
-        scot_path=Config.RAW_DATA / "Practice_ContactDetails_Jan2021_v2.xlsx",
+        postcodes=all_postcodes,
+        scot_path=Config.RAW_DATA / "scot/Practice_ContactDetails_Jan2021_v2.xlsx",
     )
-    pharmacies: cudf.DataFrame = clean_pharmacies(
-        path=Config.RAW_DATA / Config.NHS_FILES["pharmacies"], postcodes=postcodes
+    # retail: cudf.DataFrame = clean_retail_centres(
+    #     path=Config.RAW_DATA / "retailcentrecentroids.gpkg"
+    # )
+    # dentists: cudf.DataFrame = clean_dentists(
+    #     path=Config.RAW_DATA / Config.NHS_FILES["dentists"],
+    #     postcodes=all_postcodes,
+    # )
+    # pharmacies: cudf.DataFrame = clean_pharmacies(
+    #     path=Config.RAW_DATA / Config.NHS_FILES["pharmacies"], postcodes=all_postcodes
+    # )
+
+    current_postcodes: cudf.DataFrame = clean_postcodes(
+        path=Config.RAW_DATA / "onspd/ONSPD_FEB_2021_UK.csv", current=True
+    )
+    current_postcodes = current_postcodes[["postcode"]].merge(
+        all_postcodes, on="postcode"
     )
 
-    postcodes = nearest_nodes(df=postcodes, road_nodes=road_nodes)
-    retail = nearest_nodes(df=retail, road_nodes=road_nodes)
-    dentists = nearest_nodes(df=dentists, road_nodes=road_nodes)
+    current_postcodes = nearest_nodes(df=current_postcodes, road_nodes=road_nodes)
     gp = nearest_nodes(df=gp, road_nodes=road_nodes)
+    # retail = nearest_nodes(df=retail, road_nodes=road_nodes)
+    # dentists = nearest_nodes(df=dentists, road_nodes=road_nodes)
+    # pharmacies = nearest_nodes(df=pharmacies, road_nodes=road_nodes)
 
-    retail = get_buffers(poi=retail, postcodes=postcodes, k=10)
-    dentists = get_buffers(poi=dentists, postcodes=postcodes, k=10)
-    gp = get_buffers(poi=gp, postcodes=postcodes, k=10)
+    k = 5
+    gp = get_buffers(poi=gp, postcodes=current_postcodes, k=k)
+    # retail = get_buffers(poi=retail, postcodes=current_postcodes, k=k)
+    # dentists = get_buffers(poi=dentists, postcodes=current_postcodes, k=k)
+    # pharmacies = get_buffers(poi=pharmacies, postcodes=current_postcodes, k=k)
 
-    postcodes.to_parquet(Config.PROCESSED_DATA / "postcodes.parquet", index=False)
-    retail.to_parquet(Config.PROCESSED_DATA / "retail.parquet", index=False)
-    dentists.to_parquet(Config.PROCESSED_DATA / "dentists.parquet", index=False)
+    current_postcodes.to_parquet(
+        Config.PROCESSED_DATA / "postcodes.parquet", index=False
+    )
     gp.to_parquet(Config.PROCESSED_DATA / "gp.parquet", index=False)
+    # retail.to_parquet(Config.PROCESSED_DATA / "retail.parquet", index=False)
+    # dentists.to_parquet(Config.PROCESSED_DATA / "dentists.parquet", index=False)
+    # pharmacies.to_parquet(Config.PROCESSED_DATA / "pharmacies.parquet", index=False)

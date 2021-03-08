@@ -1,9 +1,5 @@
 # <https://digital.nhs.uk/services/organisation-data-service/data-downloads>
-
 # scotland: <https://www.isdscotland.org/Health-Topics/General-Practice/Workforce-and-Practice-Populations/>
-
-import zipfile
-
 import requests
 
 from ahah.utils import Config

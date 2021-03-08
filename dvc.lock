@@ -1,90 +1,83 @@
-get_osm_data:
-  cmd: python -m ahah.get_osm_data
-  deps:
-  - path: data/raw/osm_pbf
-    md5: c5116bc0106eda7606024dcfa36e1a6f.dir
-    size: 2712241487
-    nfiles: 50
-  outs:
-  - path: data/processed/osm/edges.csv
-    md5: 09702d142f986b176feac9e38bc3f2f6
-    size: 555343026
-  - path: data/processed/osm/nodes.csv
-    md5: e8a1ad6d7ba38e3a13477941d8e08735
-    size: 911873003
-process_data:
-  cmd: python -m ahah.process_data
-  deps:
-  - path: data/processed/osm/nodes.parquet
-    md5: e04de28619da964ad952b826e54b1a22
-    size: 101298848
-  - path: data/raw/nhs-dent-stat-eng-19-20-anx3-act.csv
-    md5: a68f3ec0f6c152f5b06b3d7646a721ec
-    size: 122879281
-  - path: data/raw/postcodes
-    md5: c6631913c4f418f5089deab8355c4de3.dir
-    size: 158967961
-    nfiles: 120
-  - path: data/raw/retailcentrecentroids.gpkg
-    md5: ce98d2d9b5c5cff1d0076b396c096595
-    size: 544768
-  outs:
-  - path: data/processed/dentists.parquet
-    md5: 7e2799c84fc3126fdc2812aad163beaa
-    size: 50360871
-  - path: data/processed/postcodes.parquet
-    md5: 48c01636e890553019dc80cd52566edd
-    size: 38058505
-  - path: data/processed/retail.parquet
-    md5: 2789f3f77e3ecb58700eceaf11ccce91
-    size: 52126741
-routing:
-  cmd: python -m ahah.routing
-  deps:
-  - path: data/processed/dentists.parquet
-    md5: 98fff4a80516dbd45506da5426470d6e
-    size: 50199019
-  - path: data/processed/osm/edges.parquet
-    md5: 1114c5a078c822c38d7ba6f5b058f3e2
-    size: 106565482
-  - path: data/processed/postcodes.parquet
-    md5: 6270096fff2f83eb4b4c7d9731a53120
-    size: 37958217
-  - path: data/processed/retail.parquet
-    md5: 2829229283167e71b97fe0252483552f
-    size: 51986653
-  outs:
-  - path: data/out/dentists_dist.csv
-    md5: bf068c5f4cfa926abbbe1e1d982264d6
-    size: 83089906
-  - path: data/out/retail_dist.csv
-    md5: 38c7120abe20e03b66535acb26226007
-    size: 81465411
-filter_osm:
-  cmd: python -m ahah.filter_osm
-  deps:
-  - path: data/raw/osm_pbf
-    md5: 4d707fd97877b2018d3cd6d2569be1c5.dir
-    size: 3029370641
-    nfiles: 4
-  outs:
-  - path: data/processed/osm/edges.csv
-    md5: b54996edc26c13b6a5c7dc2342813c2a
-    size: 247473486
-  - path: data/processed/osm/nodes.csv
-    md5: 3c5e5e7ba2da045fe7a0f5bf40892923
-    size: 251466086
-osm_graph:
-  cmd: python -m ahah.osm_graph
-  deps:
-  - path: data/raw/osm_pbf
-    md5: 87796f375aeb6b727f8b4df34fd2aed7.dir
-    size: 3030842615
-    nfiles: 3
-  outs:
-  - path: data/processed/osm/edges.parquet
-    md5: 62a0880f6c50533c7ef83e96ae641095
-    size: 126343822
-  - path: data/processed/osm/nodes.parquet
-    md5: e04de28619da964ad952b826e54b1a22
-    size: 101298848
+schema: '2.0'
+stages:
+  get_osm_data:
+    cmd: python -m ahah.get_osm_data
+    deps:
+    - path: data/raw/osm_pbf
+      md5: c5116bc0106eda7606024dcfa36e1a6f.dir
+      size: 2712241487
+      nfiles: 50
+    outs:
+    - path: data/processed/osm/edges.csv
+      md5: 09702d142f986b176feac9e38bc3f2f6
+      size: 555343026
+    - path: data/processed/osm/nodes.csv
+      md5: e8a1ad6d7ba38e3a13477941d8e08735
+      size: 911873003
+  process_data:
+    cmd: python -m ahah.process_data
+    deps:
+    - path: data/processed/osm/nodes.parquet
+      md5: 059212d4a1797e1324c53673ff148095
+      size: 147137253
+    - path: data/raw/epharmacyhq.zip
+      md5: 5dfc86877a3bc1af995e8144aee25985
+      size: 441965
+    - path: data/raw/postcodes
+      md5: c6631913c4f418f5089deab8355c4de3.dir
+      size: 158967961
+      nfiles: 120
+    - path: data/raw/scot/Practice_ContactDetails_Jan2021_v2.xlsx
+      md5: 6ef6ebcb11d412c2bfb91275ee826e35
+      size: 117669
+    outs:
+    - path: data/processed/gp.parquet
+      md5: b672d50504ecbb9931e028d58b9885d3
+      size: 37517644
+    - path: data/processed/postcodes.parquet
+      md5: e8b0f6959744eb1f640e94a003d93252
+      size: 32303831
+  routing:
+    cmd: python -m ahah.routing
+    deps:
+    - path: data/processed/gp.parquet
+      md5: b672d50504ecbb9931e028d58b9885d3
+      size: 37517644
+    - path: data/processed/osm/edges.parquet
+      md5: d8ab73f711e315687aa6291ec4c5c6ca
+      size: 683729391
+    - path: data/processed/postcodes.parquet
+      md5: e8b0f6959744eb1f640e94a003d93252
+      size: 32303831
+    outs:
+    - path: data/out/gp_dist.csv
+      md5: 68858b3700485e9cb791d09af1f76bc5
+      size: 86961512
+  filter_osm:
+    cmd: python -m ahah.filter_osm
+    deps:
+    - path: data/raw/osm_pbf
+      md5: 4d707fd97877b2018d3cd6d2569be1c5.dir
+      size: 3029370641
+      nfiles: 4
+    outs:
+    - path: data/processed/osm/edges.csv
+      md5: b54996edc26c13b6a5c7dc2342813c2a
+      size: 247473486
+    - path: data/processed/osm/nodes.csv
+      md5: 3c5e5e7ba2da045fe7a0f5bf40892923
+      size: 251466086
+  osm_graph:
+    cmd: python -m ahah.osm_graph
+    deps:
+    - path: data/raw/osm_pbf
+      md5: 53431f6b3ac1a576bedde07b7e1fd174.dir
+      size: 3038968842
+      nfiles: 3
+    outs:
+    - path: data/processed/osm/edges.parquet
+      md5: d8ab73f711e315687aa6291ec4c5c6ca
+      size: 683729391
+    - path: data/processed/osm/nodes.parquet
+      md5: 059212d4a1797e1324c53673ff148095
+      size: 147137253
